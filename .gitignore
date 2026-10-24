@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+*.vsix
+
+# Local runtime state (agent session DBs written into the workspace)
+.claudio/
+
+# Secrets — never commit. Use VS Code secret storage (Claudio: Set Backend Token).
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Test / coverage artifacts
+coverage/
+.nyc_output/
+.vitest/
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# OS cruft
+.DS_Store
+Thumbs.db
+._*
+
+# Editors
+.idea/
+*.swp
+*.swo
+
+# Scratch
+todo.md

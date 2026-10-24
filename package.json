@@ -1,0 +1,162 @@
+{
+  "name": "claudio-vscode",
+  "displayName": "Claudio",
+  "description": "Claudio coding agent in VS Code — chat, approvals with diffs, and workspace-bound file ops on the Claudio backend.",
+  "version": "0.1.0",
+  "publisher": "claudio",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "secondarySidebar": [
+        {
+          "id": "claudio",
+          "title": "Claudio",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "claudio": [
+        {
+          "type": "webview",
+          "id": "claudio.chat",
+          "name": "Claudio"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "claudio.openChat",
+        "title": "Claudio: Open Chat"
+      },
+      {
+        "command": "claudio.openConfig",
+        "title": "Claudio: Open Configuration"
+      },
+      {
+        "command": "claudio.stopRun",
+        "title": "Claudio: Stop Current Run"
+      },
+      {
+        "command": "claudio.addSelection",
+        "title": "Claudio: Add Selection to Chat"
+      },
+      {
+        "command": "claudio.newSession",
+        "title": "Claudio: New Session"
+      },
+      {
+        "command": "claudio.setToken",
+        "title": "Claudio: Set Backend Token"
+      },
+      {
+        "command": "claudio.startBackend",
+        "title": "Claudio: Start Backend"
+      },
+      {
+        "command": "claudio.stopBackend",
+        "title": "Claudio: Stop Backend"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "claudio.openChat",
+        "key": "ctrl+alt+c",
+        "mac": "cmd+alt+c"
+      },
+      {
+        "command": "claudio.addSelection",
+        "key": "ctrl+alt+s",
+        "mac": "cmd+alt+s",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "claudio.stopRun",
+        "key": "ctrl+alt+x",
+        "mac": "cmd+alt+x"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "claudio.addSelection",
+          "when": "editorHasSelection",
+          "group": "claudio@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Claudio",
+      "properties": {
+        "claudio.backend.url": {
+          "type": "string",
+          "default": "http://127.0.0.1:8100",
+          "description": "Base URL of the claudio-backend HTTP API."
+        },
+        "claudio.backend.token": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Bearer token for the backend. Prefer `Claudio: Set Backend Token`, which stores it in VS Code's secret storage instead of settings.json."
+        },
+        "claudio.backend.path": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the claudio repo root (the folder containing backend-start.sh). Required for auto-start."
+        },
+        "claudio.backend.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start the backend daemon automatically when it is not reachable."
+        },
+        "claudio.workspace.bind": {
+          "type": "boolean",
+          "default": true,
+          "description": "Bind the backend agent workspace to the folder opened in VS Code."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.js && vite build --config vite.webview.config.mts",
+    "build:host": "node esbuild.js",
+    "build:webview": "vite build --config vite.webview.config.mts",
+    "watch": "concurrently -n host,webview \"node esbuild.js --watch\" \"vite build --config vite.webview.config.mts --watch\"",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "package": "vsce package",
+    "vscode:prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.10",
+    "@types/react-dom": "^18.3.0",
+    "@types/vscode": "^1.90.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "@vscode/vsce": "^3.0.0",
+    "concurrently": "^9.0.0",
+    "esbuild": "^0.24.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8",
+    "vitest": "^2.1.0"
+  },
+  "dependencies": {
+    "lucide-react": "^0.451.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.1",
+    "remark-gfm": "^4.0.0"
+  }
+}

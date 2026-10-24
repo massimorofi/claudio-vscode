@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #0b7285;
+  --color-brand-dark: #095c6b;
+  --font-sans: var(--vscode-font-family, ui-sans-serif, system-ui, sans-serif);
+}
+
+/*
+ * VS Code theme integration.
+ *
+ * The webview lives inside the editor, so its colors come from VS Code's own
+ * theme variables rather than a fixed palette — this is what makes the panel
+ * look native in both light and dark themes. The copied SPA components used
+ * bg-white / black-alpha assumptions; here those are replaced by semantic
+ * tokens that resolve through the active VS Code theme.
+ */
+:root {
+  --bg: var(--vscode-editor-background);
+  --bg-alt: var(--vscode-sideBar-background);
+  --bg-raised: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+  --bg-hover: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.12));
+  --fg: var(--vscode-foreground);
+  --fg-muted: var(--vscode-descriptionForeground);
+  --fg-faint: color-mix(in srgb, var(--vscode-foreground) 55%, transparent);
+  --border: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
+  --input-bg: var(--vscode-input-background);
+  --input-fg: var(--vscode-input-foreground);
+  --input-border: var(--vscode-input-border, var(--border));
+  --ok: var(--vscode-charts-green, #2ea043);
+  --warn: var(--vscode-editorWarning-foreground, #d97706);
+  --err: var(--vscode-errorForeground, #e5484d);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--vscode-font-family, ui-sans-serif, system-ui, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* Semantic surface / text / border helpers used across the components. */
+.surface {
+  background: var(--bg);
+}
+.surface-alt {
+  background: var(--bg-alt);
+}
+.surface-raised {
+  background: var(--bg-raised);
+}
+.hoverable:hover {
+  background: var(--bg-hover);
+}
+.text-muted {
+  color: var(--fg-muted);
+}
+.text-faint {
+  color: var(--fg-faint);
+}
+.border-soft {
+  border: 1px solid var(--border);
+}
+.border-soft-b {
+  border-bottom: 1px solid var(--border);
+}
+.border-soft-t {
+  border-top: 1px solid var(--border);
+}
+
+.input {
+  background: var(--input-bg);
+  color: var(--input-fg);
+  border: 1px solid var(--input-border);
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.65rem;
+  font-size: 13px;
+  outline: none;
+  width: 100%;
+}
+.input:focus {
+  border-color: var(--color-brand);
+}
+
+/* Thin scrollbars for the transcript / log panes. */
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--vscode-foreground) 22%, transparent);
+  border-radius: 4px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Markdown content tweaks. */
+.md-body :is(p, ul, ol, h1, h2, h3) {
+  margin: 0.5em 0;
+}
+.md-body pre {
+  background: var(--vscode-textCodeBlock-background, rgba(0, 0, 0, 0.3));
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  font-size: 0.8rem;
+}
+.md-body code {
+  font-family: var(--vscode-editor-font-family, ui-monospace, "SF Mono", Menlo, monospace);
+  font-size: 0.85em;
+}
+.md-body :not(pre) > code {
+  background: color-mix(in srgb, var(--color-brand) 14%, transparent);
+  padding: 0.1em 0.35em;
+  border-radius: 0.25rem;
+}
+.md-body a {
+  color: var(--vscode-textLink-foreground, var(--color-brand));
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.animate-pulse-dot {
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
