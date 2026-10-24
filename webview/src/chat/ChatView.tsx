@@ -275,7 +275,7 @@ export default function ChatView({ initialApprovalMode, onOpenConfig }: ChatView
               void approve(state.pendingApproval.approval_id)
             }
           }}
-          className="input w-auto shrink-0 text-xs"
+          className="input select-fixed text-xs"
           title="Approval mode"
         >
           <option value="on_request">On request</option>

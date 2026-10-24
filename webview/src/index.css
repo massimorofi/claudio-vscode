@@ -91,6 +91,24 @@ body {
   border-color: var(--color-brand);
 }
 
+/*
+ * Fixed-width dropdown, sized for exactly 15 characters of content.
+ *
+ * Defined after `.input` on purpose: this file is unlayered, so it wins over
+ * Tailwind's layered width utilities (`w-auto`, `w-full`, ...). Without it,
+ * `.input { width: 100% }` makes the approval select expand and squeeze the
+ * session picker. `flex: 0 0 auto` keeps this box at its fixed size while the
+ * session select (`flex-1 min-w-0`) absorbs all the remaining space.
+ *
+ * `content-box` so the 15ch is real text room rather than being eaten by the
+ * 1.3rem of horizontal padding, leaving the label clear of the native arrow.
+ */
+.select-fixed {
+  box-sizing: content-box;
+  flex: 0 0 auto;
+  width: 15ch;
+}
+
 /* Thin scrollbars for the transcript / log panes. */
 .scroll-thin::-webkit-scrollbar {
   width: 8px;
