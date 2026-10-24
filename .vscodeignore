@@ -12,3 +12,11 @@ tsconfig.json
 vitest.config.ts
 vscode-extension-plan.md
 **/tsconfig.tsbuildinfo
+
+# Local runtime state — agent session DBs, never ship
+.claudio/**
+.claudio/
+
+# Scratch / docs not needed in the extension
+todo.md
+
