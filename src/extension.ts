@@ -17,7 +17,7 @@ import { StatusBar } from './status/StatusBar'
 import { Bridge } from './bridge/Bridge'
 import { readSettings, getToken, setToken } from './settings'
 import type { ActiveRunResponse } from './shared/types'
-import { bindWorkspaceToBackend, primaryWorkspaceFolder } from './workspace/binding'
+import { createSessionForWorkspace, primaryWorkspaceFolder } from './workspace/binding'
 import { getActiveSelection } from './workspace/selection'
 import { openFile } from './workspace/files'
 
@@ -110,20 +110,46 @@ async function sendInit(): Promise<void> {
   }
 }
 
-/** Bind the VS Code folder as the backend workspace, if enabled and possible. */
-async function bindIfPossible(): Promise<void> {
+/**
+ * Create a fresh backend session bound to the current folder and select it.
+ *
+ * The workspace is fixed at session creation, so a new session is the only
+ * honest way to point this window at a folder: continuing an existing
+ * conversation against a different tree is the confusion the per-session
+ * workspace design removes. When workspace binding is disabled we just clear
+ * the selection and let the backend use its configured default.
+ */
+async function startNewSession(): Promise<void> {
   const settings = readSettings()
-  if (!settings.bindWorkspace) return
+  if (!settings.bindWorkspace) {
+    chatController.newSession()
+    return
+  }
   const folder = primaryWorkspaceFolder()
-  if (!folder) return
+  if (!folder) {
+    chatController.newSession()
+    return
+  }
   try {
-    await bindWorkspaceToBackend(client, folder)
+    const session = await createSessionForWorkspace(client, folder)
+    chatController.setSessionId(session.id)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     void vscode.window.showWarningMessage(
-      `Claudio: could not bind workspace to backend — ${msg}`,
+      `Claudio: could not create a session for this workspace — ${msg}`,
     )
+    chatController.newSession()
   }
+}
+
+/**
+ * Ensure this window has a session bound to the current folder. Called at
+ * activation and after the backend (re)starts; a no-op once a session is
+ * already selected, so it never clobbers the conversation in progress.
+ */
+async function ensureSession(): Promise<void> {
+  if (chatController.currentSessionId) return
+  await startNewSession()
 }
 
 class ClaudioViewProvider implements vscode.WebviewViewProvider {
@@ -199,8 +225,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   statusBar = new StatusBar()
   bridge = new Bridge()
 
-  const getFolder = () => (readSettings().bindWorkspace ? primaryWorkspaceFolder() : undefined)
-  configController = new ConfigController(client, getFolder)
+  configController = new ConfigController(client)
 
   chatController = new ChatController(client, workspaceRoot(), 'on_request', {
     onEvent: (ev) => {
@@ -221,11 +246,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerBridgeHandlers()
   registerCommands(context)
 
-  // Re-bind the workspace when the opened folder changes.
+  // When the opened folder changes, start a NEW session bound to the new
+  // folder rather than re-binding the existing one: the workspace is fixed
+  // at session creation, so a different tree means a different session.
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       chatController.setWorkspaceRoot(workspaceRoot())
-      void bindIfPossible().then(() => {
+      void startNewSession().then(() => {
         bridge.post({ type: 'workspace.changed', workspace: workspaceRoot() })
       })
     }),
@@ -241,11 +268,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   )
 
-  // Initial bind + health check (non-blocking; the UI shows connection state).
+  // Initial session + health check (non-blocking; the UI shows connection state).
   void (async () => {
     try {
       await supervisor.ensureRunning()
-      await bindIfPossible()
+      await ensureSession()
     } catch {
       // Surfaced on first chat.send / config.get with a concrete error.
     }
@@ -308,7 +335,14 @@ function registerBridgeHandlers(): void {
 
   bridge.on('session.select', async (msg) => {
     const m = msg as { sessionId: string | null }
-    chatController.setSessionId(m.sessionId)
+    if (m.sessionId === null) {
+      // "New chat": start a fresh session bound to this window's folder
+      // rather than leaving the selection empty, which would let the next
+      // message bind to the backend default instead of this folder.
+      await startNewSession()
+    } else {
+      chatController.setSessionId(m.sessionId)
+    }
     return { ok: true }
   })
 
@@ -418,13 +452,13 @@ function registerCommands(context: vscode.ExtensionContext): void {
       await setToken(context, value)
       client.token = value
       void vscode.window.showInformationMessage('Claudio: backend token saved.')
-      await bindIfPossible()
+      await ensureSession()
     }),
 
     vscode.commands.registerCommand('claudio.startBackend', async () => {
       try {
         await supervisor.ensureRunning()
-        await bindIfPossible()
+        await ensureSession()
         void vscode.window.showInformationMessage('Claudio: backend running.')
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
