@@ -2,7 +2,7 @@
   "name": "claudio-vscode",
   "displayName": "Claudio",
   "description": "Claudio coding agent in VS Code — chat, approvals with diffs, and workspace-bound file ops on the Claudio backend.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "claudio",
   "private": true,
   "license": "MIT",

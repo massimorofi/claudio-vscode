@@ -141,6 +141,9 @@ export function useBridgeChat(): BridgeChatResult {
   const clear = useCallback(() => {
     sessionRef.current = null
     dispatch({ type: 'CLEAR' })
+    // Tell the host too, so the next send starts a fresh session rather than
+    // continuing the one the host still has selected.
+    void bridge.request('session.select', { sessionId: null }).catch(() => {})
   }, [])
 
   const loadSession = useCallback(async (sessionId: string) => {

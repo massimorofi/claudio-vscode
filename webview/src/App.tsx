@@ -60,13 +60,21 @@ export default function App() {
       </div>
 
       <div className="min-h-0 flex-1">
-        {tab === 'chat' ? (
+        {/* Chat stays mounted (hidden via CSS) when the Config tab is shown:
+            unmounting it would reset useBridgeChat to its initial state and
+            drop the streaming flag, so the composer would flip back to "Send"
+            in the middle of a live run. */}
+        <div className={tab === 'chat' ? 'h-full' : 'hidden'}>
           <ChatView
             initialApprovalMode={init?.approvalMode ?? 'on_request'}
             onOpenConfig={() => setTab('config')}
+            active={tab === 'chat'}
           />
-        ) : (
-          <ConfigView />
+        </div>
+        {tab === 'config' && (
+          <div className="h-full">
+            <ConfigView />
+          </div>
         )}
       </div>
     </div>

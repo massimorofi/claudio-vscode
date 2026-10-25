@@ -249,6 +249,21 @@ function applyEvent(state: ChatState, ev: StreamEvent): ChatState {
     }
     case 'approval_required': {
       const d = ev.data as ApprovalRequiredEvent
+      // The host re-posts `init` on every pane re-show, and a resumed stream can
+      // replay the same approval. Don't stack duplicate cards for one request:
+      // if this exact approval is already pending or already in the transcript
+      // unresolved, treat the event as a no-op.
+      if (
+        state.pendingApproval?.approval_id === d.approval_id ||
+        state.items.some(
+          (it) =>
+            it.kind === 'approval' &&
+            it.approvalId === d.approval_id &&
+            !it.resolved,
+        )
+      ) {
+        return state
+      }
       // The run is paused, not finished — keep `streaming` true so the Stop
       // control stays available and the turn never looks silently dead while it
       // waits on the user.

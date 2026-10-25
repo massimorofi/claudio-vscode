@@ -30,6 +30,7 @@ export type WebviewToHost =
   | { type: 'session.load'; requestId: string; sessionId: string }
   | { type: 'session.clear'; requestId: string; sessionId: string }
   | { type: 'session.compact'; requestId: string; sessionId: string }
+  | { type: 'session.select'; requestId: string; sessionId: string | null }
   | { type: 'config.get'; requestId: string }
   | { type: 'config.put'; requestId: string; patch: Record<string, unknown> }
   | { type: 'config.validate'; requestId: string; candidate: Record<string, unknown> }
@@ -95,6 +96,7 @@ export const REQUEST_TYPES = new Set<string>([
   'session.load',
   'session.clear',
   'session.compact',
+  'session.select',
   'config.get',
   'config.put',
   'config.validate',

@@ -3,7 +3,7 @@ node_modules/
 
 # Build output
 dist/
-out/
+0out/
 *.vsix
 
 # Local runtime state (agent session DBs written into the workspace)
@@ -37,4 +37,5 @@ Thumbs.db
 *.swo
 
 # Scratch
+todo/
 todo.md

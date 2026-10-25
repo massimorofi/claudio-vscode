@@ -88,6 +88,42 @@ describe('chatReducer', () => {
     expect(s.streaming).toBe(true)
   })
 
+  it('does not stack a duplicate card when the same approval is replayed', () => {
+    const a = {
+      approval_id: 'ap1',
+      run_id: 'r1',
+      tool: 'write_file',
+      arguments: '{}',
+      reason: 'x',
+    }
+    let s = sse(initialChatState, 'approval_required', a)
+    s = sse(s, 'approval_required', a)
+    s = sse(s, 'approval_required', a)
+    const approvals = s.items.filter((i) => i.kind === 'approval')
+    expect(approvals).toHaveLength(1)
+    expect(s.pendingApproval).toMatchObject({ approval_id: 'ap1' })
+  })
+
+  it('keeps two distinct approvals', () => {
+    let s = sse(initialChatState, 'approval_required', {
+      approval_id: 'ap1',
+      run_id: 'r1',
+      tool: 'write_file',
+      arguments: '{}',
+      reason: 'x',
+    })
+    s = sse(s, 'approval_required', {
+      approval_id: 'ap2',
+      run_id: 'r1',
+      tool: 'edit_file',
+      arguments: '{}',
+      reason: 'y',
+    })
+    const approvals = s.items.filter((i) => i.kind === 'approval')
+    expect(approvals).toHaveLength(2)
+    expect(s.pendingApproval).toMatchObject({ approval_id: 'ap2' })
+  })
+
   it('RESOLVE_APPROVAL marks the approval resolved and clears pending', () => {
     let s = sse(initialChatState, 'approval_required', {
       approval_id: 'ap1',

@@ -24,6 +24,12 @@ interface ChatViewProps {
   initialApprovalMode: string
   /** Switch the shell to the Config tab (slash command /config). */
   onOpenConfig: () => void
+  /**
+   * Whether this view is the visible tab. The view stays mounted while hidden
+   * (so chat state survives a tab switch), but `display: none` resets the
+   * scroll position — `active` lets the view restore it on re-show.
+   */
+  active: boolean
 }
 
 /**
@@ -32,7 +38,11 @@ interface ChatViewProps {
  * picker, approval mode, context gauge, new-chat) over a scrolling transcript
  * and a composer. Slash commands in the composer drive the session directly.
  */
-export default function ChatView({ initialApprovalMode, onOpenConfig }: ChatViewProps) {
+export default function ChatView({
+  initialApprovalMode,
+  onOpenConfig,
+  active,
+}: ChatViewProps) {
   const [input, setInput] = useState('')
   const [approvalMode, setApprovalMode] = useState(initialApprovalMode)
   const [sessions, setSessions] = useState<SessionSummary[]>([])
@@ -150,6 +160,16 @@ export default function ChatView({ initialApprovalMode, onOpenConfig }: ChatView
       if (el) el.scrollTop = el.scrollHeight
     }
   }, [state.items])
+
+  // Re-shown after a tab switch: `display: none` reset the scroll position,
+  // so jump back to the bottom when the user was following the stream.
+  useEffect(() => {
+    if (active && stickRef.current) {
+      const el = scrollRef.current
+      if (el) el.scrollTop = el.scrollHeight
+      setShowJump(false)
+    }
+  }, [active])
 
   // An approval needs attention: bring it into view regardless of scroll.
   useEffect(() => {

@@ -12,10 +12,11 @@ import { BackendSupervisor } from './backend/supervisor'
 import { ConfigController } from './config/ConfigController'
 import { ChatController } from './chat/ChatController'
 import { decideApproval, listPendingApprovals } from './chat/approvals'
+import { computeInitState, type InitPayload } from './chat/initState'
 import { StatusBar } from './status/StatusBar'
 import { Bridge } from './bridge/Bridge'
 import { readSettings, getToken, setToken } from './settings'
-import type { ActiveRunResponse, ApprovalRequest } from './shared/types'
+import type { ActiveRunResponse } from './shared/types'
 import { bindWorkspaceToBackend, primaryWorkspaceFolder } from './workspace/binding'
 import { getActiveSelection } from './workspace/selection'
 import { openFile } from './workspace/files'
@@ -29,8 +30,84 @@ let chatController: ChatController
 let bridge: Bridge
 let statusBar: StatusBar
 
+// Guards against a second resume firing while one is already in flight (the
+// `ready` handshake and a visibility change can both discover the same run).
+let resumeInFlight = false
+// Last init we sent, so a failed resume can post a corrected payload that keeps
+// the fields (approval mode) the webview already relies on.
+let lastInitPayload: InitPayload | null = null
+
 function workspaceRoot(): string {
   return primaryWorkspaceFolder()?.uri.fsPath ?? process.cwd()
+}
+
+/**
+ * Resume a run this host is not watching. Guarded so the `ready` handshake and
+ * a visibility re-show can't both try. On failure we post a corrected
+ * `running:false` init directly -- re-querying the backend here could loop if
+ * the backend itself is the thing that failed.
+ */
+async function resumeGuarded(runId: string, lastSeq?: number): Promise<void> {
+  if (chatController.isStreaming || resumeInFlight) return
+  resumeInFlight = true
+  try {
+    await chatController.resumeRun(runId, lastSeq)
+  } catch {
+    if (!chatController.isStreaming) {
+      bridge.post({
+        type: 'init',
+        workspace: workspaceRoot(),
+        approvalMode: lastInitPayload?.approvalMode ?? 'on_request',
+        connected: true,
+        running: false,
+        runId: null,
+        sessionId: chatController.currentSessionId,
+        pendingApproval: null,
+      })
+    }
+  } finally {
+    resumeInFlight = false
+  }
+}
+
+/**
+ * Build and push the `init` payload, then kick off a resume if one is needed.
+ *
+ * The init is posted BEFORE the (blocking) resume on purpose: `resumeRun`
+ * consumes the whole SSE stream until the run reaches a terminal state, so
+ * posting after it would withhold the "running" signal until the run was
+ * already over -- exactly the bug where the composer flips back to "Send"
+ * while the agent is still working.
+ */
+async function sendInit(): Promise<void> {
+  const payload = await computeInitState({
+    isStreaming: chatController.isStreaming,
+    currentRunId: chatController.currentRunId,
+    currentSessionId: chatController.currentSessionId,
+    health: () => supervisor.health(),
+    getApprovalMode: async () => {
+      const cfg = await configController.get()
+      return cfg.config?.agent?.approval_mode ?? 'on_request'
+    },
+    getActiveRun: (sessionId) =>
+      client.get<ActiveRunResponse>(`/sessions/${sessionId}/active_run`),
+    listPendingApprovals: () => listPendingApprovals(client),
+    workspace: workspaceRoot(),
+  })
+  lastInitPayload = payload
+  bridge.post({
+    type: 'init',
+    workspace: payload.workspace,
+    approvalMode: payload.approvalMode,
+    connected: payload.connected,
+    running: payload.running,
+    runId: payload.runId,
+    sessionId: payload.sessionId,
+    pendingApproval: payload.pendingApproval,
+  })
+  if (payload.shouldResume && payload.runId) {
+    void resumeGuarded(payload.runId, payload.lastSeq)
+  }
 }
 
 /** Bind the VS Code folder as the backend workspace, if enabled and possible. */
@@ -63,6 +140,12 @@ class ClaudioViewProvider implements vscode.WebviewViewProvider {
     }
     this.bridgeRef.attach(webviewView.webview)
     webviewView.webview.html = this.getHtml(webviewView.webview, distDir)
+    // Re-sync the webview every time the pane is re-shown: the run state may
+    // have changed while it was hidden, and the `ready`/`init` handshake only
+    // fires once at mount.
+    webviewView.onDidChangeVisibility(() => {
+      if (webviewView.visible) void sendInit()
+    })
   }
 
   private getHtml(webview: vscode.Webview, distDir: vscode.Uri): string {
@@ -186,58 +269,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 function registerBridgeHandlers(): void {
   bridge.on('ready', async () => {
-    let approvalMode = 'on_request'
-    let connected = false
-    // Seed from the host's own knowledge first: if a health check or the
-    // active-run lookup later fails, we must not downgrade a run that is
-    // genuinely still going to "Send".
-    let running = chatController.isStreaming
-    let runId: string | null = chatController.currentRunId
-    let sessionId: string | null = chatController.currentSessionId
-    let pendingApproval: ApprovalRequest | null = null
-    try {
-      connected = await supervisor.health()
-      if (connected) {
-        const cfg = await configController.get()
-        approvalMode = cfg.config?.agent?.approval_mode ?? 'on_request'
-        if (!running && sessionId) {
-          // The host may not be watching this run (webview re-created after a
-          // reload, or the run was started from another surface). Ask the
-          // backend, which is the authority on what is still in flight.
-          const ar = await client.get<ActiveRunResponse>(
-            `/sessions/${sessionId}/active_run`,
-          )
-          if (ar?.active && ar.run_id) {
-            const activeRunId: string = ar.run_id
-            try {
-              await chatController.resumeRun(activeRunId, ar.last_seq)
-              running = true
-              runId = activeRunId
-              if (ar.state === 'awaiting_approval') {
-                const pending = await listPendingApprovals(client)
-                pendingApproval =
-                  pending.find((a) => a.run_id === activeRunId) ?? null
-              }
-            } catch {
-              running = false
-              runId = null
-            }
-          }
-        }
-      }
-    } catch {
-      /* leave defaults */
-    }
-    bridge.post({
-      type: 'init',
-      workspace: workspaceRoot(),
-      approvalMode,
-      connected,
-      running,
-      runId,
-      sessionId,
-      pendingApproval,
-    })
+    await sendInit()
   })
 
   bridge.on('chat.send', async (msg) => {
@@ -267,7 +299,17 @@ function registerBridgeHandlers(): void {
       `/sessions/${m.sessionId}/messages`,
     )
     const session = await client.get<Record<string, unknown>>(`/sessions/${m.sessionId}`)
+    // The host must know which session the user is now in, or the next
+    // chat.send posts session_id:null and the backend mints a brand-new
+    // session instead of continuing this one.
+    chatController.setSessionId(m.sessionId)
     return { messages: messages.messages ?? [], session }
+  })
+
+  bridge.on('session.select', async (msg) => {
+    const m = msg as { sessionId: string | null }
+    chatController.setSessionId(m.sessionId)
+    return { ok: true }
   })
 
   bridge.on('session.clear', async (msg) => {
