@@ -60,6 +60,33 @@ Open **Settings → Claudio** (`Ctrl+,`, search "Claudio"):
 | `claudio.backend.autoStart` | `true` | Start the backend daemon automatically when it is not reachable. |
 | `claudio.workspace.bind` | `true` | Bind the agent's workspace to the folder opened in VS Code. |
 
+### Running the backend in Docker
+
+The defaults above assume a backend started locally with `backend-start.sh`
+(listening on `127.0.0.1:8100`). When the backend runs in Docker instead,
+the agent publishes no host port of its own — reach it through the web
+container's proxy:
+
+```json
+"claudio.backend.url": "http://127.0.0.1:8080",
+"claudio.backend.autoStart": false
+```
+
+A VS Code session binds to the folder you have open, and the extension sends
+that folder's **host path**. For the agent to resolve it, the folder must
+exist inside the container at the same path. In `claudio/compose.yaml` the
+host projects root is bind-mounted at its own path and added to the agent's
+allowed roots:
+
+```yaml
+- ${CLAUDIO_HOST_PROJECTS_DIR:-/home/briggen/Dev/code/ai}:${CLAUDIO_HOST_PROJECTS_DIR:-/home/briggen/Dev/code/ai}
+```
+
+Set `CLAUDIO_HOST_PROJECTS_DIR` in the backend's `.env` to the absolute host
+directory that contains the projects you open in VS Code. Sessions started
+from the **web UI** keep using the configured `/workspace` (mounted from
+`CLAUDIO_WORKSPACE_DIR`); only VS Code sessions bind to the open folder.
+
 ### Backend token
 
 Run **Claudio: Set Backend Token** (`Ctrl+Shift+P`). The token is stored in VS

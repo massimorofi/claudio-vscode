@@ -75,6 +75,11 @@ export default function ChatView({
 
   useEffect(() => {
     void refreshSessions()
+    // The host renames the session from the first user message; keep the
+    // dropdown titles in sync without a full reload.
+    return bridge.on((msg) => {
+      if (msg.type === 'session.renamed') void refreshSessions()
+    })
   }, [])
 
   const handleCompact = async () => {

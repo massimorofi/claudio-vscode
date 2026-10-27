@@ -52,3 +52,86 @@ describe('ChatController.setSessionId', () => {
     expect(c.currentSessionId).toBe(null)
   })
 })
+
+describe('ChatController session renaming', () => {
+  // A stream that immediately completes the run.
+  const completedStream = () =>
+    new Response(
+      'id: 1\nevent: run_completed\ndata: {"usage":{"cost_usd":0}}\n\n',
+      { status: 200 },
+    )
+
+  function makeClient() {
+    const patches: Array<{ path: string; body: unknown }> = []
+    const client = {
+      raw: async () => completedStream(),
+      post: async () => ({}),
+      patch: async (path: string, body: unknown) => {
+        patches.push({ path, body })
+        return {}
+      },
+    }
+    return { client, patches }
+  }
+
+  it('renames a pre-created (empty) session from the first message', async () => {
+    const { client, patches } = makeClient()
+    const renamed: Array<[string, string]> = []
+    const c = new ChatController(client as never, '/ws', 'on_request', {
+      onSessionRenamed: (id, t) => renamed.push([id, t]),
+    })
+    c.setSessionId('sess-1')
+    await c.send('fix the login bug please')
+    expect(patches).toHaveLength(1)
+    expect(patches[0].path).toBe('/sessions/sess-1')
+    expect((patches[0].body as { title: string }).title).toBe('fix the login bug please')
+    expect(renamed).toEqual([['sess-1', 'fix the login bug please']])
+  })
+
+  it('does not rename a session that already has messages', async () => {
+    const { client, patches } = makeClient()
+    const c = new ChatController(client as never, '/ws', 'on_request')
+    c.setSessionId('sess-1', true)
+    await c.send('second message')
+    expect(patches).toHaveLength(0)
+  })
+
+  it('does not rename again on subsequent messages', async () => {
+    const { client, patches } = makeClient()
+    const c = new ChatController(client as never, '/ws', 'on_request')
+    c.setSessionId('sess-1')
+    await c.send('first message')
+    await c.send('second message')
+    expect(patches).toHaveLength(1)
+  })
+
+  it('does not rename when no session is selected (backend names it)', async () => {
+    const { client, patches } = makeClient()
+    const c = new ChatController(client as never, '/ws', 'on_request')
+    c.newSession()
+    await c.send('hello')
+    expect(patches).toHaveLength(0)
+  })
+
+  it('truncates the title to 60 characters', async () => {
+    const { client, patches } = makeClient()
+    const c = new ChatController(client as never, '/ws', 'on_request')
+    c.setSessionId('sess-1')
+    await c.send('x'.repeat(100))
+    expect((patches[0].body as { title: string }).title).toHaveLength(60)
+  })
+
+  it('still sends the chat when the rename fails', async () => {
+    const client = {
+      raw: async () => completedStream(),
+      post: async () => ({}),
+      patch: async () => {
+        throw new Error('boom')
+      },
+    }
+    const c = new ChatController(client as never, '/ws', 'on_request')
+    c.setSessionId('sess-1')
+    await c.send('hello')
+    expect(c.isStreaming).toBe(false)
+  })
+})

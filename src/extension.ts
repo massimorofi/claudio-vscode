@@ -257,6 +257,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         contextPercent: chatController.contextPercent,
       })
     },
+    onSessionRenamed: (sessionId, title) => {
+      bridge.post({ type: 'session.renamed', sessionId, title })
+    },
   })
 
   registerBridgeHandlers()
@@ -365,9 +368,12 @@ function registerBridgeHandlers(): void {
     const session = await client.get<Record<string, unknown>>(`/sessions/${m.sessionId}`)
     // The host must know which session the user is now in, or the next
     // chat.send posts session_id:null and the backend mints a brand-new
-    // session instead of continuing this one.
-    chatController.setSessionId(m.sessionId)
-    return { messages: messages.messages ?? [], session }
+    // session instead of continuing this one. A session that already has
+    // messages has a real title; an empty one still needs naming from the
+    // next message.
+    const msgs = messages.messages ?? []
+    chatController.setSessionId(m.sessionId, msgs.length > 0)
+    return { messages: msgs, session }
   })
 
   bridge.on('session.select', async (msg) => {
@@ -378,7 +384,20 @@ function registerBridgeHandlers(): void {
       // message bind to the backend default instead of this folder.
       await startNewSession()
     } else {
-      chatController.setSessionId(m.sessionId)
+      // Look up whether the session already has messages: an empty one
+      // still carries the "New session" placeholder and should be renamed
+      // from the next message. If the lookup fails, assume it is titled —
+      // renaming a populated session on a guess is worse than leaving it.
+      let hasMessages = true
+      try {
+        const s = await client.get<{ message_count?: number }>(
+          `/sessions/${m.sessionId}`,
+        )
+        hasMessages = (s?.message_count ?? 0) > 0
+      } catch {
+        /* keep the conservative default */
+      }
+      chatController.setSessionId(m.sessionId, hasMessages)
     }
     return { ok: true }
   })

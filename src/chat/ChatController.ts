@@ -25,6 +25,8 @@ export type RunState = 'idle' | 'running' | 'awaiting_approval' | 'error'
 export interface ChatControllerEvents {
   onEvent?: (ev: StreamEvent) => void
   onState?: (state: RunState) => void
+  /** Fired after this controller renames the session from its first message. */
+  onSessionRenamed?: (sessionId: string, title: string) => void
 }
 
 const MAX_REATTACH_ATTEMPTS = 5
@@ -38,6 +40,13 @@ export class ChatController {
   private streaming = false
   private abort: AbortController | null = null
   private listeners: ChatControllerEvents
+  // True while the selected session still carries its placeholder title and
+  // should be renamed from the next user message. The extension creates its
+  // session before any message exists (POST /sessions), so the stored title
+  // is "New session"; the web UI instead lets the first chat message name
+  // the session (chat_stream: title = message[:60]). This flag restores that
+  // behaviour for the pre-created session.
+  private sessionNeedsTitle = false
 
   constructor(
     private client: BackendClient,
@@ -68,8 +77,15 @@ export class ChatController {
     return this.runId
   }
 
-  setSessionId(id: string | null): void {
+  /**
+   * Select the session the next send continues. ``hasMessages`` tells the
+   * controller whether the session already has a real title: a session with
+   * no messages still carries the "New session" placeholder and gets
+   * renamed from the next user message.
+   */
+  setSessionId(id: string | null, hasMessages = false): void {
     this.sessionId = id
+    this.sessionNeedsTitle = id !== null && !hasMessages
   }
 
   setWorkspaceRoot(root: string): void {
@@ -95,6 +111,22 @@ export class ChatController {
       approval_mode: this.approvalMode,
     }
     if (files && files.length) body.files = files
+
+    // A session this extension pre-created carries the "New session"
+    // placeholder. Rename it from the first message, the way the backend
+    // names a session created implicitly by a first chat message.
+    if (this.sessionId && this.sessionNeedsTitle) {
+      this.sessionNeedsTitle = false
+      const title = message.trim().slice(0, 60)
+      if (title) {
+        try {
+          await this.client.patch(`/sessions/${this.sessionId}`, { title })
+          this.listeners.onSessionRenamed?.(this.sessionId, title)
+        } catch {
+          // Non-fatal: the session keeps its current title.
+        }
+      }
+    }
 
     try {
       const res = await this.client.raw('POST', '/chat/stream', body)
@@ -137,6 +169,9 @@ export class ChatController {
     this.runId = null
     this.costUsd = 0
     this.contextPct = 0
+    // With no session selected the next send lets the backend create one,
+    // and the backend names it from that first message — nothing to rename.
+    this.sessionNeedsTitle = false
   }
 
   /**

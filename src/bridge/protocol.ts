@@ -78,6 +78,7 @@ export type HostToWebview =
   | { type: 'selection.changed'; text: string; file: string; range: string }
   | { type: 'open.tab'; tab: 'chat' | 'config' }
   | { type: 'session.cleared' }
+  | { type: 'session.renamed'; sessionId: string; title: string }
   | {
       type: 'status'
       state: 'idle' | 'running' | 'awaiting_approval' | 'error'
