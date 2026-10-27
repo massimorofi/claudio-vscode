@@ -34,14 +34,20 @@ export default function ConfigView() {
   const [testResult, setTestResult] = useState<LlmTestResult | null>(null)
 
   const loadConfig = async () => {
+    setMessage(null)
     try {
-      const res = await bridge.request<{ config: AppConfig }>('config.get')
-      const cfg = res.config
+      const res = await bridge.request<{ config?: AppConfig }>('config.get')
+      // Accept either a wrapped { config: ... } response or a bare config
+      // object, so a backend shape difference never renders an empty form.
+      const cfg = (res?.config ?? res) as AppConfig | undefined
+      if (!cfg) {
+        throw new Error('Backend returned no configuration.')
+      }
       setDraft({
         ...cfg,
         mcp: {
           ...cfg.mcp,
-          servers: (cfg.mcp.servers ?? []).map((s) => ({
+          servers: (cfg.mcp?.servers ?? []).map((s) => ({
             ...s,
             command: commandToString(s.command),
           })),
@@ -84,7 +90,7 @@ export default function ConfigView() {
       const res = await bridge.request<{
         restart_required: string[]
         changed_keys: string[]
-      }>('config.put', payload)
+      }>('config.put', { patch: payload })
       const needs = (res.restart_required ?? []).length > 0
       setRestartNeeded(needs)
       setMessage({
@@ -133,6 +139,25 @@ export default function ConfigView() {
   }
 
   if (!draft) {
+    // A load failure before any draft exists must be visible and retryable,
+    // not an endless "Loading…" message.
+    if (message?.kind === 'err') {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-sm">
+          <div className="flex items-start gap-2" style={{ color: 'var(--err)' }}>
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <span>{message.text}</span>
+          </div>
+          <button
+            onClick={() => void loadConfig()}
+            className="rounded-lg border px-4 py-2 font-semibold"
+            style={{ borderColor: 'var(--color-brand)', color: 'var(--color-brand)' }}
+          >
+            Retry
+          </button>
+        </div>
+      )
+    }
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted">
         Loading configuration…

@@ -26,6 +26,26 @@ export class ApiError extends Error {
 
 const API_PREFIX = '/api/v1'
 
+/**
+ * Build the Authorization header from the current token. A missing or
+ * whitespace-only token is rejected here, before any request leaves the
+ * extension, with an actionable error instead of a confusing 401 from the
+ * backend. Nonempty-but-invalid tokens are NOT checked here: they reach the
+ * backend and surface as ordinary unauthorized API errors.
+ */
+function authHeader(token: string): { Authorization: string } {
+  const trimmed = (token ?? '').trim()
+  if (!trimmed) {
+    throw new ApiError(
+      401,
+      'missing_token',
+      'No backend token configured. Run "Claudio: Set Backend Token" and enter the token configured on the backend.',
+      false,
+    )
+  }
+  return { Authorization: `Bearer ${trimmed}` }
+}
+
 export class BackendClient {
   baseUrl: string
   token: string
@@ -46,9 +66,11 @@ export class BackendClient {
     body?: unknown,
     opts: { signal?: AbortSignal; headers?: Record<string, string> } = {},
   ): Promise<Response> {
+    // Auth header is built AFTER caller-provided headers so a supplied
+    // header can never replace the configured backend credential.
     const headers: Record<string, string> = {
-      Authorization: `Bearer ${this.token}`,
       ...opts.headers,
+      ...authHeader(this.token),
     }
     if (body !== undefined) headers['Content-Type'] = 'application/json'
 
@@ -119,6 +141,9 @@ export class BackendClient {
 
   /** Multipart file upload (chat attachments). */
   async upload<T>(path: string, data: Uint8Array, filename: string): Promise<T> {
+    // Built outside the try so a missing-token error is not swallowed and
+    // misreported as a network failure.
+    const auth = authHeader(this.token)
     const form = new FormData()
     const blob = new Blob([data as unknown as BlobPart])
     form.append('file', blob, filename)
@@ -126,7 +151,7 @@ export class BackendClient {
     try {
       res = await fetch(this.url(path), {
         method: 'POST',
-        headers: { Authorization: `Bearer ${this.token}` },
+        headers: auth,
         body: form,
       })
     } catch (e) {

@@ -137,13 +137,13 @@
     }
   },
   "scripts": {
-    "build": "node esbuild.js && vite build --config vite.webview.config.mts",
+    "build": "node esbuild.js && node node_modules/vite/bin/vite.js build --config vite.webview.config.mts",
     "build:host": "node esbuild.js",
-    "build:webview": "vite build --config vite.webview.config.mts",
-    "watch": "concurrently -n host,webview \"node esbuild.js --watch\" \"vite build --config vite.webview.config.mts --watch\"",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "package": "vsce package",
+    "build:webview": "node node_modules/vite/bin/vite.js build --config vite.webview.config.mts",
+    "watch": "node node_modules/concurrently/dist/bin/concurrently.js -n host,webview \"node esbuild.js --watch\" \"node node_modules/vite/bin/vite.js build --config vite.webview.config.mts --watch\"",
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
+    "test": "node node_modules/vitest/vitest.mjs run",
+    "package": "node node_modules/@vscode/vsce/vsce package",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {

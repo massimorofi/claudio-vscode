@@ -15,7 +15,7 @@ import { decideApproval, listPendingApprovals } from './chat/approvals'
 import { computeInitState, type InitPayload } from './chat/initState'
 import { StatusBar } from './status/StatusBar'
 import { Bridge } from './bridge/Bridge'
-import { readSettings, getToken, setToken } from './settings'
+import { readSettings, getToken, setToken, onDidChangeToken } from './settings'
 import type { ActiveRunResponse } from './shared/types'
 import { createSessionForWorkspace, primaryWorkspaceFolder } from './workspace/binding'
 import { getActiveSelection } from './workspace/selection'
@@ -39,6 +39,22 @@ let lastInitPayload: InitPayload | null = null
 
 function workspaceRoot(): string {
   return primaryWorkspaceFolder()?.uri.fsPath ?? process.cwd()
+}
+
+/**
+ * Read the effective token (secret with settings fallback) into the shared
+ * client. Secret-storage read failures are surfaced instead of silently
+ * leaving the client with a stale or empty credential.
+ */
+async function reloadToken(context: vscode.ExtensionContext): Promise<void> {
+  try {
+    client.token = await getToken(context)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    void vscode.window.showErrorMessage(
+      `Claudio: could not read the backend token — ${msg}`,
+    )
+  }
 }
 
 /**
@@ -258,20 +274,41 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   )
 
-  // React to extension setting changes (URL / auto-start / bind toggle).
+  // React to extension setting changes (URL / token fallback / auto-start /
+  // bind toggle). The token is reloaded on every claudio config change so a
+  // change to the `claudio.backend.token` fallback takes effect without a
+  // VS Code reload.
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('claudio')) {
         const s = readSettings()
         client.baseUrl = s.url.replace(/\/+$/, '')
+        void reloadToken(context)
       }
     }),
   )
 
+  // Token changed in secret storage (e.g. written by another VS Code
+  // window): pick it up without reloading the extension.
+  context.subscriptions.push(
+    onDidChangeToken(context, () => void reloadToken(context)),
+  )
+
   // Initial session + health check (non-blocking; the UI shows connection state).
+  // A fresh install that reaches the backend without a token is prompted to
+  // configure one; declining does not start a session with empty credentials.
   void (async () => {
     try {
       await supervisor.ensureRunning()
+      const token = await getToken(context)
+      if (!token) {
+        const choice = await vscode.window.showWarningMessage(
+          'Claudio: no backend token is configured. The extension cannot call the backend API until a token is set.',
+          'Set Token',
+        )
+        if (choice !== 'Set Token') return
+        await vscode.commands.executeCommand('claudio.setToken')
+      }
       await ensureSession()
     } catch {
       // Surfaced on first chat.send / config.get with a concrete error.
@@ -444,15 +481,31 @@ function registerCommands(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand('claudio.setToken', async () => {
       const value = await vscode.window.showInputBox({
-        prompt: 'Claudio backend bearer token',
+        prompt:
+          'Enter the bearer token configured on the Claudio backend (its CLAUDIO_API_TOKEN). Leave blank to clear the stored token.',
         password: true,
         ignoreFocusOut: true,
       })
       if (value === undefined) return
       await setToken(context, value)
-      client.token = value
-      void vscode.window.showInformationMessage('Claudio: backend token saved.')
-      await ensureSession()
+      // Reread the effective token rather than trusting the entered value:
+      // blank input deletes the secret, which restores the
+      // `claudio.backend.token` settings fallback if one is configured.
+      const effective = await getToken(context)
+      client.token = effective
+      if (effective) {
+        void vscode.window.showInformationMessage(
+          value.trim()
+            ? 'Claudio: backend token saved.'
+            : 'Claudio: token cleared; using the configured fallback token.',
+        )
+        await ensureSession()
+        await sendInit()
+      } else {
+        void vscode.window.showInformationMessage(
+          'Claudio: backend token cleared. Set a token before connecting.',
+        )
+      }
     }),
 
     vscode.commands.registerCommand('claudio.startBackend', async () => {

@@ -67,6 +67,20 @@ Code's secret storage (`context.secrets`), never in `settings.json`. The
 `claudio.backend.token` setting is only a fallback for headless / scripted
 setups.
 
+The token must match the token the backend itself was configured with — it is
+the backend's API credential, not an LLM key. On a fresh install the
+extension prompts you to set it once the backend is reachable. A successful
+health probe does **not** establish API authentication: `/healthz` is
+unauthenticated, so the extension can look "connected" while every API call
+still fails with an authorization error until a token is set.
+
+Token updates take effect immediately — whether changed through the command,
+the `claudio.backend.token` setting, or another VS Code window writing the
+secret — with no VS Code reload needed. Clearing the token (blank input)
+deletes the secret and restores the settings fallback. With no token
+anywhere, API calls fail locally with a `missing_token` error that points at
+the setup command instead of hitting the backend.
+
 ### Auto-start
 
 With `claudio.backend.autoStart` on and `claudio.backend.path` set, the extension
@@ -305,6 +319,7 @@ policy allow it".
 | `backend-start.sh not found` | Set `claudio.backend.path` to the Claudio repo root (the folder that literally contains `backend-start.sh`). |
 | `Claudio backend did not become healthy within 30s` | The daemon failed to boot. Read `claudio-backend/data/logs/backend.log` in the backend repo. |
 | 401 / auth errors | Token missing or stale. Re-run **Claudio: Set Backend Token**. |
+| `No backend token configured` / authorization-header error | Run **Claudio: Set Backend Token** and enter the token configured on the backend, then use **Retry** in the Config tab. Token changes apply without reloading VS Code. |
 | Blank webview panel | The webview bundle is missing or was blocked by CSP. Run `npm run build`. The host injects a `<base>` plus a CSP that allows the webview's **origin** (`webview.cspSource`), not a path — a path-scoped `script-src` blocks `…/assets/*.js` and leaves the page blank. |
 | Agent edits the wrong project | Multi-window binding — see below. |
 | Composer shows **Send** while Claudio is still working | The webview lost its run state. Fixed by the `init` hydration described above — make sure you are on a build that includes it. If it persists, the backend may not be reporting the run: check `GET /api/v1/sessions/{id}/active_run`. |
